@@ -26,28 +26,28 @@ Modern ticketing platforms like **BookMyShow** handle high-traffic surges during
 
 The system uses a decoupled event-driven architecture designed for low latency and distributed state safety.
 
+```text
+```mermaid
+sequenceDiagram
+    autonumber
+    actor UserA as User A (React Canvas)
+    actor UserB as User B (React Canvas)
+    participant Server as Node.js / Socket.io Server
+    participant Redis as Redis Cache (Atomic Store)
 
-  +------------------+                    +------------------+
-  |   User A Client  |                    |   User B Client  |
-  |  (React Canvas)  |                    |  (React Canvas)  |
-  +--------+---------+                    +--------+---------+
-           |                                       ^
-           | 1. LOCK_SEAT (WebSocket)              | 4. SEAT_LOCKED (Broadcast)
-           v                                       |
-  +------------------------------------------------+---------+
-  |                  Node.js Server                          |
-  |             (Express + Socket.io Server)                 |
-  +------------------------+---------------------------------+
-                           |
-                           | 2. SET showtime:1:seat:C12 payload NX EX 480
-                           v
-                  +-----------------+
-                  |  Redis Cache    |  3. Returns "OK" (Lock Acquired)
-                  |  (Atomic Store) |------------------+
-                  +-----------------+                  |
-                                                       v
-                                              [ Broadcast Event ]
-
+    UserA->>Server: Emit LOCK_SEAT (seat_id: C12)
+    Server->>Redis: SET showtime:1:seat:C12 socket_id NX EX 480
+    
+    alt Lock Acquired (Success)
+        Redis-->>Server: Returns "OK"
+        Server-->>UserA: Emit SEAT_LOCKED (Success)
+        Server-->>UserB: Broadcast SEAT_LOCKED (Seat held by another)
+    else Lock Failed (Race Condition)
+        Redis-->>Server: Returns null
+        Server-->>UserA: Emit LOCK_FAILED (Seat unavailable)
+    end
+```
+              
 
 Architectural Workflow
 Client Event Trigger: User A clicks an available seat (C12), emitting a LOCK_SEAT event via WebSockets to the Node.js backend.
