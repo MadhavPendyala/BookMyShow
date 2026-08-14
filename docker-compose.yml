@@ -1,0 +1,54 @@
+services:
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: bms_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: bookmyshow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. Redis Cache & Atomic Lock Engine
+  redis:
+    image: redis:7-alpine
+    container_name: bms_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # 3. Express Backend
+  backend:
+    build: ./backend
+    container_name: bms_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=secretpassword
+      - DB_NAME=bookmyshow
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+
+  # 4. React Frontend
+  frontend:
+    build: ./FrontEnd
+    container_name: bms_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
