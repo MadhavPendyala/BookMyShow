@@ -1,11 +1,6 @@
-// backend/src/controllers/bookingController.js
 const redis = require('../redisClient');
 const db = require('../db');
 
-/**
- * 1. Hold Seats (Atomic Lock via Redis)
- * POST /api/v1/shows/:showId/hold-seats
- */
 exports.holdSeats = async (req, res) => {
   try {
     const { showId } = req.params;
@@ -15,10 +10,8 @@ exports.holdSeats = async (req, res) => {
       return res.status(400).json({ message: "At least one seat must be provided." });
     }
 
-    const holdTTLSeconds = 480; // 8 minute lock window
+    const holdTTLSeconds = 480; 
     const keys = seatIds.map(seatId => `lock:${showId}:${seatId}`);
-
-    // Execute atomic Redis Lua script
     const result = await redis.eval(
       redis.scripts.atomicLockSeats ? redis.scripts.atomicLockSeats : undefined,
       keys.length,
@@ -27,7 +20,6 @@ exports.holdSeats = async (req, res) => {
       userId
     );
 
-    // If lua script returned 0, a seat was taken
     if (result[0] === 0) {
       const takenSeat = result[1].split(':').pop();
       return res.status(409).json({ 
@@ -50,10 +42,6 @@ exports.holdSeats = async (req, res) => {
   }
 };
 
-/**
- * 2. Checkout & Confirm Booking (Idempotent Transaction)
- * POST /api/v1/bookings/checkout
- */
 exports.checkout = async (req, res) => {
   const client = await db.connect();
   const idempotencyKey = req.headers['idempotency-key'];
@@ -63,7 +51,6 @@ exports.checkout = async (req, res) => {
   }
 
   try {
-    // Check if idempotency key has already been processed
     const idempotencyCheck = await redis.get(`idempotency:${idempotencyKey}`);
     if (idempotencyCheck) {
       return res.status(200).json(JSON.parse(idempotencyCheck));
@@ -71,10 +58,8 @@ exports.checkout = async (req, res) => {
 
     const { showId, seatIds, amount, userId = "USER_MOCK_1" } = req.body;
 
-    // Begin PostgreSQL Database Transaction
     await client.query('BEGIN');
 
-    // Insert record into bookings table
     const bookingRes = await client.query(
       `INSERT INTO bookings (user_id, show_id, seat_ids, amount, status) 
        VALUES ($1, $2, $3, $4, 'CONFIRMED') RETURNING id, created_at`,
@@ -92,7 +77,6 @@ exports.checkout = async (req, res) => {
       totalPaid: amount
     };
 
-    // Cache idempotency response in Redis for 24 hours
     await redis.set(`idempotency:${idempotencyKey}`, JSON.stringify(responsePayload), 'EX', 86400);
 
     return res.status(200).json(responsePayload);

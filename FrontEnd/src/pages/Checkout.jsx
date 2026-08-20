@@ -1,26 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Timer from '../components/Timer';
-import { CreditCard, Lock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { CreditCard, Lock, CheckCircle2, AlertCircle, Sun, Moon } from 'lucide-react';
 
-/**
- * Checkout Component
- * @param {Array<string>} selectedSeatIds - List of held seat numbers (e.g. ['D14', 'D15'])
- * @param {number} totalAmount - Total cost calculation
- * @param {string} holdExpiryTimestamp - ISO UTC string when Redis lock expires
- * @param {function} onPaymentSuccess - Callback on payment completion
- */
 export default function Checkout({
   selectedSeatIds = ['D14', 'D15'],
   totalAmount = 240,
   holdExpiryTimestamp = new Date(Date.now() + 8 * 60 * 1000).toISOString(),
   onPaymentSuccess
 }) {
+  // Theme Toggle State (Defaults to 'light' / BookMyShow Theme)
+  const [theme, setTheme] = useState(() => localStorage.getItem('checkoutTheme') || 'light');
+
+  useEffect(() => {
+    localStorage.setItem('checkoutTheme', theme);
+  }, [theme]);
+
+  const isDark = theme === 'dark';
+  const activeStyles = isDark ? darkTheme : lightTheme;
+
+  // Normalize selectedSeatIds safely into an Array
+  const safeSeatIds = Array.isArray(selectedSeatIds)
+    ? selectedSeatIds
+    : selectedSeatIds instanceof Set
+    ? Array.from(selectedSeatIds)
+    : typeof selectedSeatIds === 'string'
+    ? selectedSeatIds.split(',')
+    : [];
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState(null); // 'SUCCESS' | 'FAILED' | null
+  const [paymentStatus, setPaymentStatus] = useState(null); 
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Generate an Idempotency Key once per checkout load
   const [idempotencyKey] = useState(() => `idempotency_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+  };
 
   const handlePayNow = async (e) => {
     e.preventDefault();
@@ -28,28 +43,25 @@ export default function Checkout({
     setErrorMessage('');
 
     try {
-      // Send idempotent checkout payload to API
       const response = await fetch('/api/v1/bookings/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': idempotencyKey, // Prevents double charges on retries
+          'Idempotency-Key': idempotencyKey,
           'Authorization': `Bearer ${localStorage.getItem('userToken') || ''}`
         },
         body: JSON.stringify({
           showId: 'SHOW_101',
-          seatIds: selectedSeatIds,
+          seatIds: safeSeatIds,
           amount: totalAmount,
           paymentMethod: 'CREDIT_CARD'
         })
       });
 
-      // Simulated delayed network execution for demo
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Mock Success Response (In production, load standard Stripe / Razorpay Web SDK modal)
       setPaymentStatus('SUCCESS');
-      if (onPaymentSuccess) onPaymentSuccess({ bookingId: 'BK_882910', seats: selectedSeatIds });
+      if (onPaymentSuccess) onPaymentSuccess({ bookingId: 'BK_882910', seats: safeSeatIds });
     } catch (err) {
       console.error("Payment submission failed:", err);
       setPaymentStatus('FAILED');
@@ -61,16 +73,22 @@ export default function Checkout({
 
   if (paymentStatus === 'SUCCESS') {
     return (
-      <div style={styles.container}>
-        <div style={{ ...styles.card, textAlign: 'center' }}>
+      <div style={{ ...styles.container, ...activeStyles.container }}>
+        <div style={{ ...styles.card, ...activeStyles.card, textAlign: 'center' }}>
           <CheckCircle2 size={64} color="#22c55e" style={{ margin: '0 auto 16px' }} />
-          <h2 style={{ fontSize: '24px', margin: '0 0 8px 0' }}>Booking Confirmed!</h2>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '24px' }}>
+          <h2 style={{ fontSize: '24px', margin: '0 0 8px 0', color: activeStyles.textPrimary }}>Booking Confirmed!</h2>
+          <p style={{ color: activeStyles.textSecondary, fontSize: '14px', marginBottom: '24px' }}>
             Your tickets have been sent to your registered email address.
           </p>
-          <div style={styles.summaryBox}>
-            <div>Seats Reserved: <strong>{selectedSeatIds.join(', ')}</strong></div>
-            <div>Booking Ref: <strong>BK_882910</strong></div>
+          <div style={{ ...styles.summaryBox, ...activeStyles.summaryBox }}>
+            <div style={{ ...styles.summaryRow, color: activeStyles.textSecondary }}>
+              <span>Seats Reserved:</span>
+              <strong style={{ color: activeStyles.textPrimary }}>{safeSeatIds.join(', ')}</strong>
+            </div>
+            <div style={{ ...styles.summaryRow, color: activeStyles.textSecondary }}>
+              <span>Booking Ref:</span>
+              <strong style={{ color: activeStyles.textPrimary }}>BK_882910</strong>
+            </div>
           </div>
         </div>
       </div>
@@ -78,14 +96,30 @@ export default function Checkout({
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
+    <div style={{ ...styles.container, ...activeStyles.container }}>
+      
+      {/* Brand Header with Theme Switcher */}
+      <div style={styles.topBar}>
+        <div style={styles.brandHeader}>
+          <h1 style={{ ...styles.logoText, color: activeStyles.textPrimary }}>
+            book<span style={styles.logoBadge}>my</span>show
+          </h1>
+        </div>
+
+        {/* Theme Switch Button */}
+        <button onClick={toggleTheme} style={{ ...styles.themeToggleButton, ...activeStyles.themeToggleButton }}>
+          {isDark ? <Sun size={16} color="#facc15" /> : <Moon size={16} color="#475569" />}
+          <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+      </div>
+
+      <div style={{ ...styles.card, ...activeStyles.card }}>
         
         {/* Header with Hold Countdown Timer */}
-        <div style={styles.headerRow}>
+        <div style={{ ...styles.headerRow, borderBottomColor: activeStyles.borderColor }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '20px' }}>Secure Checkout</h2>
-            <span style={{ fontSize: '13px', color: '#94a3b8' }}>Order Summary</span>
+            <h2 style={{ margin: 0, fontSize: '20px', color: '#f43f5e', fontWeight: '700' }}>Secure Checkout</h2>
+            <span style={{ fontSize: '13px', color: activeStyles.textSecondary }}>Order Summary</span>
           </div>
 
           <Timer 
@@ -105,44 +139,49 @@ export default function Checkout({
         )}
 
         {/* Selected Seats Itemized */}
-        <div style={styles.summaryBox}>
-          <div style={styles.summaryRow}>
+        <div style={{ ...styles.summaryBox, ...activeStyles.summaryBox }}>
+          <div style={{ ...styles.summaryRow, color: activeStyles.textSecondary }}>
             <span>Event:</span>
-            <strong>Modern Art Gala</strong>
+            <strong style={{ color: activeStyles.textPrimary }}>Modern Art Gala</strong>
           </div>
-          <div style={styles.summaryRow}>
+          <div style={{ ...styles.summaryRow, color: activeStyles.textSecondary }}>
             <span>Selected Seats:</span>
-            <strong>{selectedSeatIds.join(', ')}</strong>
+            <strong style={{ color: activeStyles.textPrimary }}>{safeSeatIds.join(', ')}</strong>
           </div>
-          <div style={styles.summaryRow}>
-            <span>Total Payable:</span>
-            <strong style={{ color: '#facc15', fontSize: '18px' }}>${totalAmount}.00</strong>
+          <div style={{ 
+            ...styles.summaryRow, 
+            borderTop: `1px dashed ${activeStyles.borderColor}`, 
+            paddingTop: '10px', 
+            marginTop: '6px' 
+          }}>
+            <span style={{ fontWeight: '600', color: activeStyles.textPrimary }}>Total Payable:</span>
+            <strong style={{ color: '#f43f5e', fontSize: '20px' }}>₹{totalAmount}.00</strong>
           </div>
         </div>
 
-        {/* Credit Card Form Mock */}
+        {/* Payment Form */}
         <form onSubmit={handlePayNow} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={styles.label}>Cardholder Name</label>
-            <input required type="text" placeholder="John Doe" style={styles.input} />
+            <label style={{ ...styles.label, color: activeStyles.textSecondary }}>Cardholder Name</label>
+            <input required type="text" placeholder="John Doe" style={{ ...styles.input, ...activeStyles.input }} />
           </div>
 
           <div>
-            <label style={styles.label}>Card Number</label>
+            <label style={{ ...styles.label, color: activeStyles.textSecondary }}>Card Number</label>
             <div style={{ position: 'relative' }}>
-              <input required type="text" placeholder="4532 •••• •••• 8892" style={styles.input} />
-              <CreditCard size={18} color="#64748b" style={{ position: 'absolute', right: '12px', top: '12px' }} />
+              <input required type="text" placeholder="4532 •••• •••• 8892" style={{ ...styles.input, ...activeStyles.input }} />
+              <CreditCard size={18} color={isDark ? '#64748b' : '#94a3b8'} style={{ position: 'absolute', right: '12px', top: '12px' }} />
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{ flex: 1 }}>
-              <label style={styles.label}>Expiry Date</label>
-              <input required type="text" placeholder="MM/YY" style={styles.input} />
+              <label style={{ ...styles.label, color: activeStyles.textSecondary }}>Expiry Date</label>
+              <input required type="text" placeholder="MM/YY" style={{ ...styles.input, ...activeStyles.input }} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={styles.label}>CVV / CVC</label>
-              <input required type="password" maxLength="4" placeholder="•••" style={styles.input} />
+              <label style={{ ...styles.label, color: activeStyles.textSecondary }}>CVV / CVC</label>
+              <input required type="password" maxLength="4" placeholder="•••" style={{ ...styles.input, ...activeStyles.input }} />
             </div>
           </div>
 
@@ -165,8 +204,8 @@ export default function Checkout({
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', marginTop: '16px' }}>
-          🔒 Encrypted 256-bit payment processing with Idempotency Protection.
+        <p style={{ textAlign: 'center', fontSize: '11px', color: activeStyles.textSecondary, marginTop: '16px' }}>
+          🔒 Security protected with Idempotency Protection & BookMyShow Engine.
         </p>
 
       </div>
@@ -174,36 +213,72 @@ export default function Checkout({
   );
 }
 
+// Layout Base Styles
 const styles = {
   container: {
     minHeight: '100vh',
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#090d16',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    padding: '20px',
+    transition: 'all 0.3s ease'
+  },
+  topBar: {
+    width: '100%',
+    maxWidth: '480px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '20px'
+  },
+  brandHeader: {
+    textAlign: 'left'
+  },
+  logoText: {
+    fontSize: '28px',
+    fontWeight: '800',
+    margin: 0,
+    letterSpacing: '-1px'
+  },
+  logoBadge: {
+    backgroundColor: '#f43f5e',
     color: '#fff',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '20px'
+    padding: '2px 6px',
+    borderRadius: '4px',
+    marginLeft: '2px',
+    marginRight: '2px'
+  },
+  themeToggleButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 12px',
+    borderRadius: '20px',
+    border: '1px solid',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
   },
   card: {
     width: '100%',
-    maxWidth: '520px',
-    backgroundColor: '#0f172a',
-    border: '1px solid #1e293b',
+    maxWidth: '480px',
     borderRadius: '16px',
-    padding: '32px'
+    padding: '32px',
+    boxSizing: 'border-box',
+    transition: 'all 0.3s ease'
   },
   headerRow: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #1e293b',
     paddingBottom: '16px',
     marginBottom: '20px'
   },
   summaryBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: '10px',
+    borderRadius: '12px',
     padding: '16px',
     marginBottom: '24px',
     display: 'flex',
@@ -213,26 +288,22 @@ const styles = {
   summaryRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '14px',
-    color: '#cbd5e1'
+    fontSize: '14px'
   },
   label: {
     display: 'block',
     fontSize: '12px',
     fontWeight: '600',
-    color: '#94a3b8',
     marginBottom: '6px'
   },
   input: {
     width: '100%',
-    padding: '10px 14px',
+    padding: '12px 14px',
     borderRadius: '8px',
-    border: '1px solid #334155',
-    backgroundColor: '#020617',
-    color: '#fff',
     fontSize: '14px',
     outline: 'none',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    transition: 'all 0.2s ease'
   },
   payButton: {
     display: 'flex',
@@ -243,22 +314,71 @@ const styles = {
     padding: '14px',
     borderRadius: '8px',
     border: 'none',
-    backgroundColor: '#3b82f6',
-    color: '#fff',
+    backgroundColor: '#f43f5e',
+    color: '#ffffff',
     fontSize: '16px',
     fontWeight: '700',
-    marginTop: '8px'
+    marginTop: '8px',
+    boxShadow: '0 4px 12px rgba(244, 63, 94, 0.3)'
   },
   errorBanner: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    backgroundColor: '#451a03',
-    border: '1px solid #78350f',
-    color: '#fca5a5',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    color: '#991b1b',
     padding: '12px',
     borderRadius: '8px',
     fontSize: '13px',
     marginBottom: '16px'
+  }
+};
+
+// Light Theme Variables (BookMyShow Red Light Mode)
+const lightTheme = {
+  container: { backgroundColor: '#f5f5f7' },
+  card: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)'
+  },
+  textPrimary: '#1f2533',
+  textSecondary: '#64748b',
+  borderColor: '#e2e8f0',
+  summaryBox: { backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' },
+  input: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #cbd5e1',
+    color: '#1f2533'
+  },
+  themeToggleButton: {
+    backgroundColor: '#ffffff',
+    borderColor: '#cbd5e1',
+    color: '#475569'
+  }
+};
+
+// Dark Theme Variables (Cinematic Dark Mode)
+const darkTheme = {
+  container: { backgroundColor: '#090d16' },
+  card: {
+    backgroundColor: '#0f172a',
+    border: '1px solid #1e293b',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
+  },
+  textPrimary: '#f8fafc',
+  textSecondary: '#94a3b8',
+  borderColor: '#1e293b',
+  summaryBox: { backgroundColor: '#1e293b', border: '1px solid #334155' },
+  input: {
+    backgroundColor: '#020617',
+    border: '1px solid #334155',
+    color: '#f8fafc'
+  },
+  themeToggleButton: {
+    backgroundColor: '#1e293b',
+    borderColor: '#334155',
+    color: '#f8fafc'
   }
 };

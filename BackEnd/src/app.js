@@ -4,7 +4,7 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const { WebSocketServer } = require('ws');
-const { holdSeats, checkout } = require('./controllers/bookingController');
+const { holdSeats, checkout } = require('./controllers/booking');
 
 const app = express();
 const server = http.createServer(app);
